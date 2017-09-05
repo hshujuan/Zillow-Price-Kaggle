@@ -27,8 +27,8 @@ BASELINE_PRED = 0.0115   # Baseline based on mean of training data, per Oleg
 
 ##### READ IN RAW DATA
 print( "\nReading data from disk ...")
-prop = pd.read_csv('properties_2016.csv')
-train = pd.read_csv("train_2016_v2.csv")
+prop = pd.read_csv('../inputs/properties_2016.csv')
+train = pd.read_csv("../inputs/train_2016_v2.csv")
 
 
 ################
@@ -44,7 +44,13 @@ for c, dtype in zip(prop.columns, prop.dtypes):
         prop[c] = prop[c].astype(np.float32)
 
 df_train = train.merge(prop, how='left', on='parcelid')
-df_train.fillna(df_train.median(),inplace = True)
+df_train.fillna(df_train.median(),inplace = True) #will change for mean, was median
+
+
+# #drop out outliers, Marco edit here
+# df_train=df_train[ df_train.logerror > -0.4 ]
+# df_train=df_train[ df_train.logerror < 0.419 ]
+
 
 x_train = df_train.drop(['parcelid', 'logerror', 'transactiondate', 'propertyzoningdesc',
                          'propertycountylandusecode', 'fireplacecnt', 'fireplaceflag'], axis=1)
@@ -67,7 +73,7 @@ d_train = lgb.Dataset(x_train, label=y_train)
 
 ##### RUN LIGHTGBM
 params = {}
-params['max_bin'] = 10
+params['max_bin'] = 11
 params['learning_rate'] = 0.0021 # shrinkage_rate
 params['boosting_type'] = 'gbdt'
 params['objective'] = 'regression'
@@ -90,7 +96,7 @@ del x_train; gc.collect()
 
 print("\nPrepare for LightGBM prediction ...")
 print("   Read sample file ...")
-sample = pd.read_csv('sample_submission.csv')
+sample = pd.read_csv('../inputs/sample_submission.csv')
 print("   ...")
 sample['parcelid'] = sample['ParcelId']
 print("   Merge with property data ...")
@@ -130,7 +136,7 @@ print( pd.DataFrame(p_test).head() )
 ##### (I tried keeping a copy, but the program crashed.)
 
 print( "\nRe-reading properties file ...")
-properties = pd.read_csv('properties_2016.csv')
+properties = pd.read_csv('../inputs/properties_2016.csv')
 
 ##### PROCESS DATA FOR XGBOOST
 print( "\nProcessing data for XGBoost ...")
@@ -242,9 +248,9 @@ gc.collect()
 np.random.seed(17)
 random.seed(17)
 
-train = pd.read_csv("train_2016_v2.csv", parse_dates=["transactiondate"])
-properties = pd.read_csv("properties_2016.csv")
-submission = pd.read_csv("sample_submission.csv")
+train = pd.read_csv("../inputs/train_2016_v2.csv", parse_dates=["transactiondate"])
+properties = pd.read_csv("../inputs/properties_2016.csv")
+submission = pd.read_csv("../inputs/sample_submission.csv")
 print(len(train),len(properties),len(submission))
 
 def get_features(df):
