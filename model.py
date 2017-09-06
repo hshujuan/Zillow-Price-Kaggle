@@ -13,13 +13,15 @@ import gc
 from sklearn.linear_model import LinearRegression
 import random
 import datetime as dt
+from sklearn.model_selection import GridSearchCV
+
 
 
 
 # Parameters
 XGB_WEIGHT = 0.6415
-BASELINE_WEIGHT = 0.0056
-OLS_WEIGHT = 0.0828
+BASELINE_WEIGHT = 0.0056 # was 0.0050 Marco Marson
+OLS_WEIGHT = 0.0828 # was 0.0856 Marco Marson
 
 XGB1_WEIGHT = 0.8083  # Weight of first in combination of two XGB models
 
@@ -44,13 +46,7 @@ for c, dtype in zip(prop.columns, prop.dtypes):
         prop[c] = prop[c].astype(np.float32)
 
 df_train = train.merge(prop, how='left', on='parcelid')
-df_train.fillna(df_train.median(),inplace = True) #will change for mean, was median
-
-
-# #drop out outliers, Marco edit here
-# df_train=df_train[ df_train.logerror > -0.4 ]
-# df_train=df_train[ df_train.logerror < 0.419 ]
-
+df_train.fillna(df_train.median(),inplace = True)
 
 x_train = df_train.drop(['parcelid', 'logerror', 'transactiondate', 'propertyzoningdesc',
                          'propertycountylandusecode', 'fireplacecnt', 'fireplaceflag'], axis=1)
@@ -72,24 +68,57 @@ d_train = lgb.Dataset(x_train, label=y_train)
 
 
 ##### RUN LIGHTGBM
+
 params = {}
-params['max_bin'] = 11
+params['max_bin'] = 44
 params['learning_rate'] = 0.0021 # shrinkage_rate
 params['boosting_type'] = 'gbdt'
 params['objective'] = 'regression'
 params['metric'] = 'l1'          # or 'mae'
-params['sub_feature'] = 0.345
+params['sub_feature'] = 0.345    # feature_fraction (small values => use very different submodels)
 params['bagging_fraction'] = 0.85 # sub_row
 params['bagging_freq'] = 40
-params['num_leaves'] = 512        # num_leaf
+params['num_leaves'] = 128        # num_leaf
 params['min_data'] = 500         # min_data_in_leaf
 params['min_hessian'] = 0.05     # min_sum_hessian_in_leaf
 params['verbose'] = 0
 params['feature_fraction_seed'] = 2
 params['bagging_seed'] = 3
 
+np.random.seed(0)
+random.seed(0)
+
 print("\nFitting LightGBM model ...")
 clf = lgb.train(params, d_train, 430)
+# #
+# # # ########### PARAMETER TUNING OF LightGBM
+# # #
+# # #
+# estimator = lgb.LGBMRegressor(max_bin=10, learning_rate=0.0021,metric = 'l1',boosting_type='gbdt', sub_feature= 0.345,
+# bagging_fraction=0.85, bagging_freq=40, min_data=500, min_hessian=0.05, verbose= 0, feature_fraction_seed=2)
+#
+# param_grid = {
+#     'num_leaves' : [256,512],
+#     'max_bin': [10,11,12,13,14,15,16,18,20,22,24,26,28,30,32,34,35,36,37,38,39,40,44],
+#     'sub_feature':[0.345, 0.340, 0.350],
+#     'learning_rate': [0.0021],
+#     'n_estimators': [8,24,48],
+#     'num_leaves': [128,256,512],
+#     'boosting_type' : ['gbdt'],
+#     'objective' : ['regression']
+#
+#
+# }
+#
+# gbm = GridSearchCV(estimator, param_grid, cv=4)
+#
+# gbm.fit(x_train, y_train)
+#
+# print('Best parameters found by grid search are:', gbm.best_params_)
+# quit()
+
+############# END OF PARAMETER TUNING
+
 
 del d_train; gc.collect()
 del x_train; gc.collect()
@@ -113,7 +142,6 @@ for c in x_test.dtypes[x_test.dtypes == object].index.values:
     x_test[c] = (x_test[c] == True)
 print("   ...")
 x_test = x_test.values.astype(np.float32, copy=False)
-print("Test shape :", x_test.shape)
 
 print("\nStart LightGBM prediction ...")
 p_test = clf.predict(x_test)
@@ -122,7 +150,6 @@ del x_test; gc.collect()
 
 print( "\nUnadjusted LightGBM predictions:" )
 print( pd.DataFrame(p_test).head() )
-
 
 
 
@@ -171,7 +198,7 @@ print("\nSetting up data for XGBoost ...")
 # xgboost params
 xgb_params = {
     'eta': 0.037,
-    'max_depth': 5,
+    'max_depth': 7,
     'subsample': 0.80,
     'objective': 'reg:linear',
     'eval_metric': 'mae',
@@ -183,6 +210,25 @@ xgb_params = {
 
 dtrain = xgb.DMatrix(x_train, y_train)
 dtest = xgb.DMatrix(x_test)
+#
+# xgbmodel= xgb.XGBRegressor()
+# param_grid = {
+#     'learning_rate': [0.037, 0.036, 0.05, 0.04],
+#     'max_depth': [5,7],
+#     'subsample': [0.8],
+#     'objective': ['reg:linear']
+#
+#
+# }
+#
+# gbm = GridSearchCV(xgbmodel, param_grid,
+#                    verbose=2, refit=True)
+#
+# gbm.fit(x_train, y_train)
+#
+# print('Best parameters found by grid search are:', gbm.best_params_)
+#
+# quit()
 
 num_boost_rounds = 250
 print("num_boost_rounds="+str(num_boost_rounds))
@@ -204,7 +250,7 @@ print("\nSetting up data for XGBoost ...")
 # xgboost params
 xgb_params = {
     'eta': 0.033,
-    'max_depth': 6,
+    'max_depth': 8,
     'subsample': 0.80,
     'objective': 'reg:linear',
     'eval_metric': 'mae',
